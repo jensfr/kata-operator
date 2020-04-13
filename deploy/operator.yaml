@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kata-operator
+  namespace: kata-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: kata-operator
+  template:
+    metadata:
+      labels:
+        name: kata-operator
+    spec:
+      serviceAccountName: kata-operator
+      containers:
+        - name: kata-operator
+          # Replace this with the built image name
+          image: quay.io/harpatil/kata-operator:v0.0.1 
+          command:
+          - kata-operator
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              value: ""
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "kata-operator"
