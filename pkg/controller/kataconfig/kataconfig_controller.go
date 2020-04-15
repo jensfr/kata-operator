@@ -162,6 +162,9 @@ func (r *ReconcileKataconfig) Reconcile(request reconcile.Request) (reconcile.Re
 
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
 func newPodForCR(cr *cachev1alpha1.Kataconfig) *corev1.Pod {
+	volumeType := corev1.HostPathDirectory
+	runPrivileged := true
+	var runAsUser int64 = 0
 	labels := map[string]string{
 		"app": cr.Name,
 	}
@@ -174,9 +177,30 @@ func newPodForCR(cr *cachev1alpha1.Kataconfig) *corev1.Pod {
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
+					Name:    "kata-installer",
+					Image:   "quay.io/jensfr/kata-installer:v0.0.1",
+					Command: []string{"/usr/bin/entrypoint.sh"},
+					SecurityContext: &corev1.SecurityContext{
+						Privileged: &runPrivileged,
+						RunAsUser: &runAsUser,
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "host",
+							MountPath: "/host",
+						},
+					},
+				},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "host",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/",
+							Type: &volumeType,
+						},
+					},
 				},
 			},
 		},
