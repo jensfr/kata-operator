@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"github.com/go-logr/logr"
 )
 
 var log = logf.Log.WithName("controller_kataconfig")
@@ -85,6 +86,8 @@ type ReconcileKataconfig struct {
 	scheme *runtime.Scheme
 }
 
+const kataFinalizer = "finalizer.cache.example.com"
+
 // Reconcile reads that state of the cluster for a Kataconfig object and makes changes based on the state read
 // and what is in the Kataconfig.Spec
 // TODO(user): Modify this Reconcile function to implement your Controller logic.  This example creates
@@ -108,6 +111,36 @@ func (r *ReconcileKataconfig) Reconcile(request reconcile.Request) (reconcile.Re
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	// Check if the Kata instance is marked to be deleted, which is
+	// indicated by the deletion timestamp being set.
+	isKataMarkedToBeDeleted := instance.GetDeletionTimestamp() != nil
+	if isKataMarkedToBeDeleted {
+		if contains(instance.GetFinalizers(), kataFinalizer) {
+			// Run finalization logic for instanceFinalizer. If the
+			// finalization logic fails, don't remove the finalizer so
+			// that we can retry during the next reconciliation.
+			if err := r.finalizeKata(reqLogger, instance); err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// Remove instanceFinalizer. Once all finalizers have been
+			// removed, the object will be deleted.
+			instance.SetFinalizers(remove(instance.GetFinalizers(), kataFinalizer))
+			err := r.client.Update(context.TODO(), instance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+		return reconcile.Result{}, nil
+	}
+
+	// Add finalizer for this CR
+	if !contains(instance.GetFinalizers(), kataFinalizer) {
+		if err := r.addFinalizer(reqLogger, instance); err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	// Define a new Pod object
@@ -158,6 +191,46 @@ func (r *ReconcileKataconfig) Reconcile(request reconcile.Request) (reconcile.Re
 	// Pod already exists - don't requeue
 	reqLogger.Info("Skip reconcile: Machine Config already exists", "Pod.Namespace", foundMc.Namespace, "Pod.Name", foundMc.Name)
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileKataconfig) finalizeKata(reqLogger logr.Logger, m *cachev1alpha1.Kataconfig) error {
+	// TODO(user): Add the cleanup steps that the operator
+	// needs to do before the CR can be deleted. Examples
+	// of finalizers include performing backups and deleting
+	// resources that are not owned by this CR, like a PVC.
+	reqLogger.Info("Successfully finalized memcached")
+	return nil
+}
+
+func (r *ReconcileKataconfig) addFinalizer(reqLogger logr.Logger, m *cachev1alpha1.Kataconfig) error {
+	reqLogger.Info("Adding Finalizer for the Kata")
+	m.SetFinalizers(append(m.GetFinalizers(), kataFinalizer))
+
+	// Update CR
+	err := r.client.Update(context.TODO(), m)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update Kata with finalizer")
+		return err
+	}
+	return nil
+}
+
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func remove(list []string, s string) []string {
+	for i, v := range list {
+		if v == s {
+			list = append(list[:i], list[i+1:]...)
+		}
+	}
+	return list
 }
 
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
