@@ -2,11 +2,13 @@ package kataconfig
 
 import (
 	"context"
+	"reflect"
 
 	ignTypes "github.com/coreos/ignition/config/v2_2/types"
 	cachev1alpha1 "github.com/harche/kata-operator/pkg/apis/cache/v1alpha1"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	corev1 "k8s.io/api/core/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -86,6 +88,75 @@ type ReconcileKataconfig struct {
 	scheme *runtime.Scheme
 }
 
+func copyStatusFields(desired, current *appsv1.DaemonSet) *appsv1.DaemonSet {
+	desired.Status = *current.Status.DeepCopy()
+	return desired
+}
+
+func (r *ReconcileKataconfig) reconcileDaemonSet(reqLogger logr.Logger, instance *cachev1alpha1.Kataconfig, namespace string) (reconcile.Result, error) {
+	// Define a new DaemonSet object
+	//provisionerImage := os.Getenv(provisionerImageEnvVarName)
+	/*if provisionerImage == "" {
+		reqLogger.Info("PROVISIONER_IMAGE not set, defaulting to hostpath-provisioner")
+		provisionerImage = ProvisionerImageDefault
+	}*/
+	//provisionerImage := "quay.io/jensfr/kata-installer:v0.0.1"
+
+	desired := newDaemonSetForCR(instance)
+	desiredMetaObj := &desired.ObjectMeta
+	setLastAppliedConfiguration(desiredMetaObj)
+
+	// Set HostPathProvisioner instance as the owner and controller
+	if err := controllerutil.SetControllerReference(instance, desired, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Check if this DaemonSet already exists
+	found := &appsv1.DaemonSet{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, found)
+	if err != nil && errors.IsNotFound(err) {
+		reqLogger.Info("Creating a new DaemonSet", "DaemonSet.Namespace", desired.Namespace, "Daemonset.Name", desired.Name)
+		err = r.client.Create(context.TODO(), desired)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		// DaemonSet created successfully - don't requeue
+		return reconcile.Result{}, nil
+	} else if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Keep a copy of the original for comparison later.
+	currentRuntimeObjCopy := found.DeepCopyObject()
+	// Copy found status fields, so the compare won't fail on desired/scheduled/ready pods being different. Updating will ignore them anyway.
+	desired = copyStatusFields(desired, found)
+
+	// allow users to add new annotations (but not change ours)
+	mergeLabelsAndAnnotations(desiredMetaObj, &found.ObjectMeta)
+
+	// create merged DaemonSet from found and desired.
+	merged, err := mergeObject(desired, found)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if !reflect.DeepEqual(currentRuntimeObjCopy, merged) {
+		logJSONDiff(reqLogger, currentRuntimeObjCopy, merged)
+		// Current is different from desired, update.
+		reqLogger.Info("Updating DaemonSet", "DaemonSet.Name", desired.Name)
+		err = r.client.Update(context.TODO(), merged)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
+	}
+
+	// DaemonSet already exists and matches the desired state - don't requeue
+	reqLogger.Info("Skip reconcile: DaemonSet already exists", "DaemonSet.Namespace", found.Namespace, "Daemonset.Name", found.Name)
+	return reconcile.Result{}, nil
+}
+
 const kataFinalizer = "finalizer.cache.example.com"
 
 // Reconcile reads that state of the cluster for a Kataconfig object and makes changes based on the state read
@@ -143,28 +214,10 @@ func (r *ReconcileKataconfig) Reconcile(request reconcile.Request) (reconcile.Re
 		}
 	}
 
-	// Define a new Pod object
-	pod := newPodForCR(instance)
-
-	// Set Kataconfig instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
-	} else if err != nil {
-		return reconcile.Result{}, err
+	res, err := r.reconcileDaemonSet(reqLogger, instance, request.Namespace)
+	if err != nil {
+		reqLogger.Error(err, "Unable to create DaemonSet")
+		return res, err
 	}
 
 	mc := newMCForCR(instance)
@@ -188,8 +241,8 @@ func (r *ReconcileKataconfig) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, err
 	}
 
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Machine Config already exists", "Pod.Namespace", foundMc.Namespace, "Pod.Name", foundMc.Name)
+	// Machine config already exists - don't requeue
+	reqLogger.Info("Skip reconcile: Machine Config already exists", "Mc.Namespace", foundMc.Namespace, "Mc.Name", foundMc.Name)
 	return reconcile.Result{}, nil
 }
 
@@ -231,6 +284,70 @@ func remove(list []string, s string) []string {
 		}
 	}
 	return list
+}
+
+func newDaemonSetForCR(cr *cachev1alpha1.Kataconfig) *appsv1.DaemonSet {
+	volumeType := corev1.HostPathDirectory
+	runPrivileged := true
+	var runAsUser int64 = 0
+	labels := map[string]string{
+		"kata-deploy":"true",
+	}
+	return &appsv1.DaemonSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "DaemonSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "kata-deploy",
+			Namespace: cr.Namespace,
+			Labels:    labels,
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kata-deploy": "true",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+				},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: "kata-label-node",
+					NodeSelector: labels,
+					Containers: []corev1.Container{
+						{
+							Name:    "kata-installer",
+							Image:   "quay.io/jensfr/kata-installer:v0.0.1",
+							Command: []string{"/usr/bin/entrypoint.sh"},
+							SecurityContext: &corev1.SecurityContext{
+								Privileged: &runPrivileged,
+								RunAsUser: &runAsUser,
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "host",
+									MountPath: "/host",
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "host",
+							VolumeSource: corev1.VolumeSource{
+								HostPath: &corev1.HostPathVolumeSource{
+									Path: "/",
+									Type: &volumeType,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
