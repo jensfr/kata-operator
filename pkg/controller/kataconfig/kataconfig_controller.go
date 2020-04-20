@@ -409,18 +409,18 @@ func newMCForCR(cr *cachev1alpha1.Kataconfig) *mcfgv1.MachineConfig {
 	mc.Kind = "MachineConfig"
 
 	mc.ObjectMeta.Labels = labels
-	mc.ObjectMeta.Name = "50-heyho-kata-crio-dropin"
+	mc.ObjectMeta.Name = "50-kata-crio-dropin"
 	mc.ObjectMeta.Namespace = cr.Namespace
 	mc.Spec.Config.Ignition.Version = "2.2.0"
 
 	file := ignTypes.File{}
 	c := ignTypes.FileContents{}
-	c.Source = "data:text/plain;charset=utf-8;base64,cnVudGltZV9wYXRoPSIvdXNyL2Jpbi9rYXRhLXJ1bnRpbWUiCg=="
+	c.Source = "data:text/plain;charset=utf-8;base64,W2NyaW8ucnVudGltZV0KbWFuYWdlX25zX2xpZmVjeWNsZSA9IHRydWUKW2NyaW8ucnVudGltZS5ydW50aW1lcy5ydW5jXQpydW50aW1lX3BhdGggPSAiIgpydW50aW1lX3R5cGUgPSAib2NpIgpydW50aW1lX3Jvb3QgPSAiL3J1bi9ydW5jIgpbY3Jpby5ydW50aW1lLnJ1bnRpbWVzLmthdGEtcWVtdV0KcnVudGltZV9wYXRoPSIvdXNyL2Jpbi9rYXRhLXJ1bnRpbWUiCg=="
 	file.Contents = c
 	file.Filesystem = "root"
 	m := 420
 	file.Mode = &m
-	file.Path = "/etc/kata-1.conf"
+	file.Path = "/etc/crio/crio.conf.d/50-kata"
 
 	mc.Spec.Config.Storage.Files = []ignTypes.File{file}
 
