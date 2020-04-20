@@ -13,7 +13,7 @@ spec:
       labels:
         name: kata-operator
     spec:
-      serviceAccountName: kata-operator
+      serviceAccountName: kata-label-node
       containers:
         - name: kata-operator
           # Replace this with the built image name
