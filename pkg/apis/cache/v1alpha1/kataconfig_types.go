@@ -23,6 +23,7 @@ type KataconfigStatus struct {
 	Nodes []string `json:"nodes"`
 }
 
+// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // Kataconfig is the Schema for the kataconfigs API
