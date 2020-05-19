@@ -1,0 +1,7 @@
+apiVersion: kataconfiguration.openshift.io/v1alpha1
+kind: KataConfig
+metadata:
+  name: example-kataconfig
+spec:
+  runtimeClass: kata-qemu
+  kataImage: docker.io/pharshal/kata-operator:v0.0.1
