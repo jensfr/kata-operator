@@ -239,7 +239,7 @@ func installBinaries() error {
 	rpmostreeOverrideReplace("kernel-*.rpm")
 	rpmostreeOverrideReplace("{rdma-core-*.rpm,libibverbs*.rpm}")
 
-	out, err = exec.Command("/usr/bin/rpm-ostree", "install", "--idempotent", "--reboot", "kata-runtime", "kata-osbuilder").Output()
+	out, err = exec.Command("/usr/bin/rpm-ostree", "install", "--idempotent", "kata-runtime", "kata-osbuilder").Output()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ostree install kata failed\n")
 	}
