@@ -135,7 +135,7 @@ func (r *ReconcileKataConfig) Reconcile(request reconcile.Request) (reconcile.Re
 
 		instance.Status.FailedNodes = []kataconfigurationv1alpha1.FailedNode{}
 		instance.Status.RuntimeClass = "kata-oc"
-		instance.Status.KataImage = "quay.io/kata-operator/kata-artifacts:1.0"
+		instance.Status.KataImage = "quay.io/kata-operator/kata-artifacts:v2.0"
 
 		nodesList := &corev1.NodeList{}
 		var workerNodeLabels map[string]string
@@ -291,7 +291,7 @@ func processDaemonsetForCR(cr *kataconfigurationv1alpha1.KataConfig, operation s
 					Containers: []corev1.Container{
 						{
 							Name:            "kata-install-pod",
-							Image:           "quay.io/harpatil/kata-install-daemon:1.5",
+							Image:           "quay.io/jensfr/kata-install-daemon:v1.0",
 							ImagePullPolicy: "Always",
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: &runPrivileged,
