@@ -19,6 +19,7 @@ rules:
   - events
   - configmaps
   - secrets
+  - nodes
   verbs:
   - create
   - delete

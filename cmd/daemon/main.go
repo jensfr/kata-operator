@@ -121,32 +121,15 @@ func installKata(kataConfigResourceName string) {
 		fmt.Println("Unable to get client set")
 		os.Exit(1)
 	}
-
 	if _, err := os.Stat("/host/usr/bin/kata-runtime"); err == nil {
-		fmt.Println("placeholder 3 mark node completion")
-		// kata exists
-		// mark completion
-		attempts := 5
-		for i := 0; ; i++ {
-			kataconfig, err := kataClientSet.KataconfigurationV1alpha1().KataConfigs("default").Get(context.TODO(), kataConfigResourceName, metaV1.GetOptions{})
-			if err != nil {
-				fmt.Println("error 0")
-				fmt.Println(err)
-			}
-
-			if kataconfig.Status.InProgressNodesCount > 0 {
-				kataconfig.Status.InProgressNodesCount = kataconfig.Status.InProgressNodesCount - 1
-			}
-			kataconfig.Status.CompletedNodesCount = kataconfig.Status.CompletedNodesCount + 1
-
-			_, err = kataClientSet.KataconfigurationV1alpha1().KataConfigs("default").UpdateStatus(context.TODO(), kataconfig, metaV1.UpdateOptions{FieldManager: "kata-install-daemon"})
-			if err != nil {
-				fmt.Println("error 1")
-				fmt.Println(err)
-
-			}
-			ks.CompletedNodesCount = ks.CompletedNodesCount + 1
-		})
+		// kata exist - mark completion
+		err = updateKataConfigStatus(kataClientSet, kataConfigResourceName,
+			func(ks *kataTypes.KataConfigStatus) {
+				if ks.InProgressNodesCount > 0 {
+					ks.InProgressNodesCount = ks.InProgressNodesCount - 1
+				}
+				ks.CompletedNodesCount = ks.CompletedNodesCount + 1
+			})
 
 		if err != nil {
 			fmt.Printf("kata exists on the node, error updating kataconfig status %+v", err)
@@ -167,7 +150,7 @@ func installKata(kataConfigResourceName string) {
 		err = installBinaries()
 
 		// Temporary hold to simulate time taken for the installation of the binaries
-		time.Sleep(10 * time.Second)
+		//time.Sleep(10 * time.Second)
 
 		if err != nil {
 			// kata installation failed. report it.
@@ -211,27 +194,37 @@ func installKata(kataConfigResourceName string) {
 	}
 }
 
-func doCmd(cmd *exec.Cmd) {
-	err := cmd.Start()
-	fmt.Printf(cmd.String())
+func doCmd(cmd *exec.Cmd) error {
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	fmt.Println(cmd.String())
 	if err != nil {
 		log.Println(err)
+		return err
 	}
-	log.Println("Waiting for command to finish...")
-	err = cmd.Wait()
-	log.Printf("Command finished with error: %v\n", err)
+
+	return nil
 }
 
-func rpmostreeOverrideReplace(rpms string) {
+func rpmostreeOverrideReplace(rpms string) error {
 	cmd := exec.Command("/bin/bash", "-c", "/usr/bin/rpm-ostree override replace /opt/kata-install/packages/"+rpms)
-	doCmd(cmd)
+	err := doCmd(cmd)
+	if err != nil {
+		fmt.Println("override replace of " + rpms + " failed")
+		return err
+	}
+	return nil
 }
 
 func installBinaries() error {
 	fmt.Fprintf(os.Stderr, "%s\n", os.Getenv("PATH"))
 	log.SetOutput(os.Stdout)
 	cmd := exec.Command("mkdir", "-p", "/host/opt/kata-install")
-	doCmd(cmd)
+	err := doCmd(cmd)
+	if err != nil {
+		return err
+	}
 
 	if err := syscall.Chroot("/host"); err != nil {
 		log.Fatalf("Unable to chroot to %s: %s", "/host", err)
@@ -253,10 +246,12 @@ func installBinaries() error {
 	srcRef, err := alltransports.ParseImageName("docker://quay.io/jensfr/kata-artifacts:v2.0")
 	if err != nil {
 		fmt.Println("Invalid source name")
+		return err
 	}
 	destRef, err := alltransports.ParseImageName("oci:/opt/kata-install/kata-image:latest")
 	if err != nil {
 		fmt.Println("Invalid destination name")
+		return err
 	}
 	fmt.Println("copying down image...")
 	_, err = copy.Image(context.Background(), policyContext, destRef, srcRef, &copy.Options{})
@@ -264,31 +259,63 @@ func installBinaries() error {
 	err = image.CreateRuntimeBundleLayout("/opt/kata-install/kata-image/", "/usr/local/kata", "latest", "linux", "v1.0")
 	if err != nil {
 		fmt.Println("error creating Runtime bundle layout in /usr/local/kata")
+		return err
 	}
 	fmt.Println("created Runtime bundle layout in /usr/local/kata")
 	fmt.Println(err)
 
 	cmd = exec.Command("mkdir", "-p", "/etc/yum.repos.d/")
-	doCmd(cmd)
+	err = doCmd(cmd)
+	if err != nil {
+		return err
+	}
 
 	cmd = exec.Command("/usr/bin/cp", "-f", "/usr/local/kata/linux/packages.repo", "/etc/yum.repos.d/")
-	doCmd(cmd)
+	err = doCmd(cmd)
+	if err != nil {
+		return err
+	}
+
+	cmd = exec.Command("/usr/bin/cp", "-f", "/usr/local/kata/linux/katainstall.service", "/etc/systemd/system/katainstall.service")
+	err = doCmd(cmd)
+	if err != nil {
+		return err
+	}
+
+	cmd = exec.Command("/usr/bin/cp", "-f", "/usr/local/kata/linux/install_kata_packages.sh", "/opt/kata-install/install_kata_packages.sh")
+	err = doCmd(cmd)
+	if err != nil {
+		return err
+	}
 
 	cmd = exec.Command("/usr/bin/cp", "-a", "/usr/local/kata/linux/packages", "/opt/kata-install/packages")
-	doCmd(cmd)
+	err = doCmd(cmd)
+	if err != nil {
+		return err
+	}
 
-	cmd = exec.Command("/usr/bin/rpm-ostree", "status")
-	doCmd(cmd)
+	cmd = exec.Command("env")
+	err = doCmd(cmd)
+	if err != nil {
+		fmt.Println("calling env failed")
+	}
 
-	cmd = exec.Command("pwd")
-	doCmd(cmd)
+	if err := rpmostreeOverrideReplace("linux-firmware-20191202-97.gite8a0f4c9.el8.noarch.rpm"); err != nil {
+		return err
+	}
 
-	rpmostreeOverrideReplace("linux-firmware-20191202-97.gite8a0f4c9.el8.noarch.rpm")
-	rpmostreeOverrideReplace("kernel-*.rpm")
-	rpmostreeOverrideReplace("{rdma-core-*.rpm,libibverbs*.rpm}")
+	if err := rpmostreeOverrideReplace("kernel-*.rpm"); err != nil {
+		return err
+	}
+	if err := rpmostreeOverrideReplace("{rdma-core-*.rpm,libibverbs*.rpm}"); err != nil {
+		return err
+	}
 
-	cmd = exec.Command("/usr/bin/rpm-ostree", "install", "--idempotent", "kata-runtime", "kata-osbuilder")
-	doCmd(cmd)
+	cmd = exec.Command("/bin/bash", "-c", "/usr/bin/rpm-ostree install --idempotent kata-runtime kata-osbuilder")
+	err = doCmd(cmd)
+	if err != nil {
+		return err
+	}
 
-	return err
+	return nil
 }

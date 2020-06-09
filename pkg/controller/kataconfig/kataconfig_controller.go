@@ -8,15 +8,13 @@ import (
 	b64 "encoding/base64"
 
 	"github.com/BurntSushi/toml"
-
 	ignTypes "github.com/coreos/ignition/config/v2_2/types"
 	kataconfigurationv1alpha1 "github.com/openshift/kata-operator/pkg/apis/kataconfiguration/v1alpha1"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-
 	nodeapi "k8s.io/api/node/v1beta1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -317,6 +315,8 @@ func processDaemonsetForCR(cr *kataconfigurationv1alpha1.KataConfig, operation s
 							},
 						},
 					},
+					HostNetwork: true,
+					HostPID:     true,
 				},
 			},
 		},
