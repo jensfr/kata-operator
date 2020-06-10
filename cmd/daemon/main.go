@@ -252,7 +252,6 @@ func installBinaries() error {
 		log.Fatalf("Unable to chdir to %s: %s", "/", err)
 	}
 
-	fmt.Println("in INSTALLBINARIES")
 	policy, err := signature.DefaultPolicy(nil)
 	if err != nil {
 		fmt.Println(err)
@@ -271,16 +270,14 @@ func installBinaries() error {
 		fmt.Println("Invalid destination name")
 		return err
 	}
-	fmt.Println("copying down image...")
+
 	_, err = copy.Image(context.Background(), policyContext, destRef, srcRef, &copy.Options{})
-	fmt.Println("done with copying image")
-	err = image.CreateRuntimeBundleLayout("/opt/kata-install/kata-image/", "/usr/local/kata", "latest", "linux", "v1.0")
+	err = image.CreateRuntimeBundleLayout("/opt/kata-install/kata-image/",
+		"/usr/local/kata", "latest", "linux", "v1.0")
 	if err != nil {
 		fmt.Println("error creating Runtime bundle layout in /usr/local/kata")
 		return err
 	}
-	fmt.Println("created Runtime bundle layout in /usr/local/kata")
-	fmt.Println(err)
 
 	cmd = exec.Command("mkdir", "-p", "/etc/yum.repos.d/")
 	err = doCmd(cmd)
@@ -288,34 +285,29 @@ func installBinaries() error {
 		return err
 	}
 
-	cmd = exec.Command("/usr/bin/cp", "-f", "/usr/local/kata/linux/packages.repo", "/etc/yum.repos.d/")
-	err = doCmd(cmd)
-	if err != nil {
+	cmd = exec.Command("/usr/bin/cp", "-f", "/usr/local/kata/linux/packages.repo",
+		"/etc/yum.repos.d/")
+	if err := doCmd(cmd); err != nil {
 		return err
 	}
 
-	cmd = exec.Command("/usr/bin/cp", "-f", "/usr/local/kata/linux/katainstall.service", "/etc/systemd/system/katainstall.service")
-	err = doCmd(cmd)
-	if err != nil {
+	cmd = exec.Command("/usr/bin/cp", "-f", "/usr/local/kata/linux/katainstall.service",
+		"/etc/systemd/system/katainstall.service")
+	if err := doCmd(cmd); err != nil {
 		return err
 	}
 
-	cmd = exec.Command("/usr/bin/cp", "-f", "/usr/local/kata/linux/install_kata_packages.sh", "/opt/kata-install/install_kata_packages.sh")
-	err = doCmd(cmd)
-	if err != nil {
+	cmd = exec.Command("/usr/bin/cp", "-f",
+		"/usr/local/kata/linux/install_kata_packages.sh",
+		"/opt/kata-install/install_kata_packages.sh")
+	if err := doCmd(cmd); err != nil {
 		return err
 	}
 
-	cmd = exec.Command("/usr/bin/cp", "-a", "/usr/local/kata/linux/packages", "/opt/kata-install/packages")
-	err = doCmd(cmd)
-	if err != nil {
+	cmd = exec.Command("/usr/bin/cp", "-a",
+		"/usr/local/kata/linux/packages", "/opt/kata-install/packages")
+	if err = doCmd(cmd); err != nil {
 		return err
-	}
-
-	cmd = exec.Command("env")
-	err = doCmd(cmd)
-	if err != nil {
-		fmt.Println("calling env failed")
 	}
 
 	if err := rpmostreeOverrideReplace("linux-firmware-20191202-97.gite8a0f4c9.el8.noarch.rpm"); err != nil {
