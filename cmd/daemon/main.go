@@ -102,8 +102,26 @@ func upgradeKata() error {
 }
 
 func uninstallKata() error {
-	fmt.Println("Not Implemented Yet")
-	return nil
+	fmt.Fprintf(os.Stderr, "%s\n", os.Getenv("PATH"))
+	log.SetOutput(os.Stdout)
+	cmd := exec.Command("mkdir", "-p", "/host/opt/kata-install")
+	err := doCmd(cmd)
+	if err != nil {
+		return err
+	}
+
+	if err := syscall.Chroot("/host"); err != nil {
+		log.Fatalf("Unable to chroot to %s: %s", "/host", err)
+	}
+
+	if err := syscall.Chdir("/"); err != nil {
+		log.Fatalf("Unable to chdir to %s: %s", "/", err)
+	}
+
+	cmd = exec.Command("/bin/bash", "-c", "/usr/local/kata/linux/kata-cleanup.sh")
+	err = doCmd(cmd)
+
+	return err
 }
 
 func installKata(kataConfigResourceName string) {
