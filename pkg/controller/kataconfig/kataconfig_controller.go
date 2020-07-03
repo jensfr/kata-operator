@@ -499,7 +499,7 @@ func processDaemonsetForCR(cr *kataconfigurationv1alpha1.KataConfig, operation s
 						},
 					},
 					HostNetwork: true,
-					HostPid: true,
+					HostPID: true,
 				},
 			},
 		},
