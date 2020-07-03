@@ -314,7 +314,7 @@ func (r *ReconcileKataConfig) Reconcile(request reconcile.Request) (reconcile.Re
 			instance.Status.RuntimeClass = "kata-runtime"
 		}
 
-		instance.Status.KataImage = "quay.io/kata-operator/kata-artifacts:1.0"
+		instance.Status.KataImage = "quay.io/isolatedcontainers/kata-operator-payload:v1.0"
 
 		nodesList := &corev1.NodeList{}
 		var workerNodeLabels map[string]string
@@ -472,7 +472,7 @@ func processDaemonsetForCR(cr *kataconfigurationv1alpha1.KataConfig, operation s
 					Containers: []corev1.Container{
 						{
 							Name:            "kata-install-pod",
-							Image:           "quay.io/harpatil/kata-install-daemon:1.5",
+							Image:           "quay.io/isolatedcontainers/kata-operator-daemon:v1.0",
 							ImagePullPolicy: "Always",
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: &runPrivileged,
