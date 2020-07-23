@@ -13,6 +13,9 @@ type KataConfigSpec struct {
 
 	// +optional
 	Config KataInstallConfig `json:"config"`
+
+	// +optional
+	KataPayloadImage string `json:"kataPayloadImage"`
 }
 
 // KataInstallConfig is a placeholder struct
@@ -25,7 +28,7 @@ type KataConfigStatus struct {
 	RuntimeClass string `json:"runtimeClass"`
 
 	// KataImage is the image used for delivering kata binaries
-	KataImage string `json:"kataImage"`
+	KataPayloadImage string `json:"kataPayloadImage"`
 
 	// TotalNodesCounts is the total number of worker nodes targeted by this CR
 	TotalNodesCount int `json:"totalNodesCount"`

@@ -192,6 +192,11 @@ func (r *ReconcileKataConfig) Reconcile(request reconcile.Request) (reconcile.Re
 
 			return r.setRuntimeClass()
 		}
+
+		if r.kataConfig.Status.KataPayloadImage != r.kataConfig.Spec.KataPayloadImage {
+			return r.processKataConfigUpdateRequest()
+		}
+
 		// Intiate the installation of kata runtime on the nodes if it doesn't exist already
 		return r.processKataConfigInstallRequest()
 	}()
@@ -238,7 +243,7 @@ func (r *ReconcileKataConfig) processDaemonsetForCR(operation DaemonOperation) *
 					Containers: []corev1.Container{
 						{
 							Name:            "kata-install-pod",
-							Image:           "quay.io/isolatedcontainers/kata-operator-daemon:v1.0",
+							Image:           "quay.io/jensfr/kata-operator-daemon:v1.0",
 							ImagePullPolicy: "Always",
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: &runPrivileged,
@@ -345,11 +350,11 @@ WantedBy=multi-user.target
 				Ignition: ignTypes.Ignition{
 					Version: "2.2.0",
 				},
-                                Systemd: ignTypes.Systemd{
-                                        Units: []ignTypes.Unit{
-                                               {Name: name, Enabled: &isenabled, Contents: content},
-                                       },
-                               },
+				Systemd: ignTypes.Systemd{
+					Units: []ignTypes.Unit{
+						{Name: name, Enabled: &isenabled, Contents: content},
+					},
+				},
 			},
 		},
 	}
@@ -495,9 +500,10 @@ func (r *ReconcileKataConfig) processKataConfigInstallRequest() (reconcile.Resul
 		}
 	}
 
-	if r.kataConfig.Status.KataImage == "" {
+	if r.kataConfig.Status.KataPayloadImage == "" {
+
 		// TODO - placeholder. This will change in future.
-		r.kataConfig.Status.KataImage = "quay.io/kata-operator/kata-artifacts:1.0"
+		r.kataConfig.Status.KataPayloadImage = "quay.io/kata-operator/kata-artifacts:1.0"
 	}
 
 	// Don't create the daemonset if kata is already installed on the cluster nodes
@@ -581,6 +587,26 @@ func (r *ReconcileKataConfig) setRuntimeClass() (reconcile.Result, error) {
 			return reconcile.Result{}, err
 		}
 	}
+
+	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileKataConfig) processKataConfigUpdateRequest() (reconcile.Result, error) {
+	r.kataLogger.Info("KataConfig update in progress: ")
+	r.kataLogger.Info("using image %s", r.kataConfig.Status.KataPayloadImage)
+
+	//r.processKataConfigDeleteRequest()
+
+	//copy update image url into install image url
+	//TODO
+	// - make install function use install image url from Kataconfig
+	// - refactor install procedure into smaller functions if necessary
+	// - if no runtimeclass name change we only need to install rpms for an update and
+	//   leave crio config drop-in and runtimeclass unchanged
+	// - what are possible race conditions?
+	// - how to clean up if something fails in the middle of the procedure?
+
+	//return r.processKataConfigInstallRequest()
 
 	return reconcile.Result{}, nil
 }
