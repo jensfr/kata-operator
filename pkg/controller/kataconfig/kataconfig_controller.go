@@ -177,6 +177,7 @@ func (r *ReconcileKataConfig) Reconcile(request reconcile.Request) (reconcile.Re
 		// handled only after kata binaries are installed on the nodes
 		if *r.isOpenShift && r.kataConfig.Status.TotalNodesCount > 0 &&
 			len(r.kataConfig.Status.InstallationStatus.InProgress.BinariesInstalledNodesList) == r.kataConfig.Status.TotalNodesCount {
+			r.kataLogger.Info("In Progress: %d, TotalNodesCount: %d", len(r.kataConfig.Status.InstallationStatus.InProgress.BinariesInstalledNodesList), r.kataConfig.Status.TotalNodesCount)
 			return r.monitorKataConfigInstallation()
 		}
 
@@ -190,15 +191,22 @@ func (r *ReconcileKataConfig) Reconcile(request reconcile.Request) (reconcile.Re
 				return reconcile.Result{}, err
 			}
 
+			r.kataConfig.Status.KataPayloadImage = r.kataConfig.Spec.KataPayloadImage
+
 			return r.setRuntimeClass()
 		}
 
-		if r.kataConfig.Status.KataPayloadImage != r.kataConfig.Spec.KataPayloadImage {
+		// Intiate the installation of kata runtime on the nodes if it doesn't exist already
+		if r.kataConfig.Status.KataPayloadImage == "" {
+			return r.processKataConfigInstallRequest()
+		}
+
+		if r.kataConfig.Status.KataPayloadImage != "" && r.kataConfig.Spec.KataPayloadImage != r.kataConfig.Status.KataPayloadImage {
 			return r.processKataConfigUpdateRequest()
 		}
 
-		// Intiate the installation of kata runtime on the nodes if it doesn't exist already
-		return r.processKataConfigInstallRequest()
+		r.kataLogger.Info("End of reconcile without action taken")
+		return reconcile.Result{}, err
 	}()
 }
 
@@ -372,7 +380,7 @@ WantedBy=multi-user.target
 	file.Filesystem = "root"
 	m := 420
 	file.Mode = &m
-	file.Path = "/etc/crio/crio.conf.d/kata-50.conf"
+	file.Path = "/etc/crio/crio.conf.d/50-kata.conf"
 
 	mc.Spec.Config.Storage.Files = []ignTypes.File{file}
 
@@ -595,7 +603,7 @@ func (r *ReconcileKataConfig) processKataConfigUpdateRequest() (reconcile.Result
 	r.kataLogger.Info("KataConfig update in progress: ")
 	r.kataLogger.Info("using image %s", r.kataConfig.Status.KataPayloadImage)
 
-	//r.processKataConfigDeleteRequest()
+	r.processKataConfigDeleteRequest()
 
 	//copy update image url into install image url
 	//TODO
@@ -606,9 +614,9 @@ func (r *ReconcileKataConfig) processKataConfigUpdateRequest() (reconcile.Result
 	// - what are possible race conditions?
 	// - how to clean up if something fails in the middle of the procedure?
 
-	//return r.processKataConfigInstallRequest()
+	return r.processKataConfigInstallRequest()
 
-	return reconcile.Result{}, nil
+	//return reconcile.Result{}, nil
 }
 
 func (r *ReconcileKataConfig) processKataConfigDeleteRequest() (reconcile.Result, error) {
@@ -725,6 +733,7 @@ func (r *ReconcileKataConfig) processKataConfigDeleteRequest() (reconcile.Result
 				r.kataLogger.Info("Monitoring worker mcp", "worker mcp name", workreMcp.Name, "ready machines", workreMcp.Status.ReadyMachineCount,
 					"total machines", workreMcp.Status.MachineCount)
 				if workreMcp.Status.ReadyMachineCount != workreMcp.Status.MachineCount {
+					r.kataLogger.Info("worker mcp, requeueing because ready machines < total machines")
 					return reconcile.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
 				}
 			} else {
@@ -745,6 +754,7 @@ func (r *ReconcileKataConfig) processKataConfigDeleteRequest() (reconcile.Result
 					r.kataLogger.Info("Monitoring parent mcp", "parent mcp name", parentMcp.Name, "ready machines", parentMcp.Status.ReadyMachineCount,
 						"total machines", parentMcp.Status.MachineCount)
 					if parentMcp.Status.ReadyMachineCount != parentMcp.Status.MachineCount {
+						r.kataLogger.Info("requeueing because ready machines < total machines")
 						return reconcile.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
 					}
 
@@ -764,6 +774,7 @@ func (r *ReconcileKataConfig) processKataConfigDeleteRequest() (reconcile.Result
 							"mc", mc.Name, "error", err)
 					}
 				} else {
+					r.kataLogger.Info("requeueing because ready machines < total machines")
 					return reconcile.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
 				}
 			}
@@ -782,6 +793,7 @@ func (r *ReconcileKataConfig) processKataConfigDeleteRequest() (reconcile.Result
 
 			err = r.client.Status().Update(context.TODO(), r.kataConfig)
 			if err != nil {
+				r.kataLogger.Info("requeueing because binariesUninstalled == 0")
 				return reconcile.Result{}, err
 			}
 		}
@@ -839,8 +851,10 @@ func (r *ReconcileKataConfig) monitorKataConfigInstallation() (reconcile.Result,
 				return reconcile.Result{}, err
 			}
 			// mcp created successfully - requeue to check the status later
+			r.kataLogger.Info("MCP created successfully, requeuing")
 			return reconcile.Result{Requeue: true, RequeueAfter: 20 * time.Second}, nil
 		} else if err != nil {
+			r.kataLogger.Info("Error while creating MCP")
 			return reconcile.Result{}, err
 		}
 
@@ -857,6 +871,7 @@ func (r *ReconcileKataConfig) monitorKataConfigInstallation() (reconcile.Result,
 
 	mc, err := r.newMCForCR()
 	if err != nil {
+		r.kataLogger.Info("Error from newMCForCR")
 		return reconcile.Result{}, err
 	}
 
@@ -866,14 +881,18 @@ func (r *ReconcileKataConfig) monitorKataConfigInstallation() (reconcile.Result,
 		r.kataLogger.Info("Creating a new Machine Config ", "mc.Name", mc.Name)
 		err = r.client.Create(context.TODO(), mc)
 		if err != nil {
+			r.kataLogger.Info("Error while creating MC")
 			return reconcile.Result{}, err
 		}
 		// mc created successfully - don't requeue
+		r.kataLogger.Info("MC created successfully, don't requeue")
 		return reconcile.Result{}, nil
 	} else if err != nil {
+		r.kataLogger.Info("Error retrieving MC")
 		return reconcile.Result{}, err
 	}
 
+	r.kataLogger.Info("Return normal from monitorKataConfigInstallation")
 	return reconcile.Result{}, nil
 }
 
