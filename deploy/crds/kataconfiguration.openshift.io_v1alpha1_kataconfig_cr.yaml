@@ -3,7 +3,7 @@ kind: KataConfig
 metadata:
   name: example-kataconfig 
 spec:
-   kataPayloadImage: quay.io/isolatedcontainers/kata-operator-payload:v2.0
+   kataPayloadImage: quay.io/isolatedcontainers/kata-operator-payload:4.5.3
  
 #spec:
 #  kataConfigPoolSelector:

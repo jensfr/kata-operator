@@ -196,13 +196,13 @@ func (r *ReconcileKataConfig) Reconcile(request reconcile.Request) (reconcile.Re
 			return r.setRuntimeClass()
 		}
 
+		if r.kataConfig.Status.KataPayloadImage != "" && r.kataConfig.Spec.KataPayloadImage != r.kataConfig.Status.KataPayloadImage {
+			return r.processKataConfigUpdateRequest()
+		}
+
 		// Intiate the installation of kata runtime on the nodes if it doesn't exist already
 		if r.kataConfig.Status.KataPayloadImage == "" {
 			return r.processKataConfigInstallRequest()
-		}
-
-		if r.kataConfig.Status.KataPayloadImage != "" && r.kataConfig.Spec.KataPayloadImage != r.kataConfig.Status.KataPayloadImage {
-			return r.processKataConfigUpdateRequest()
 		}
 
 		r.kataLogger.Info("End of reconcile without action taken")
@@ -601,22 +601,14 @@ func (r *ReconcileKataConfig) setRuntimeClass() (reconcile.Result, error) {
 
 func (r *ReconcileKataConfig) processKataConfigUpdateRequest() (reconcile.Result, error) {
 	r.kataLogger.Info("KataConfig update in progress: ")
-	r.kataLogger.Info("using image %s", r.kataConfig.Status.KataPayloadImage)
+	r.kataLogger.Info("using image")
 
 	r.processKataConfigDeleteRequest()
 
-	//copy update image url into install image url
-	//TODO
-	// - make install function use install image url from Kataconfig
-	// - refactor install procedure into smaller functions if necessary
-	// - if no runtimeclass name change we only need to install rpms for an update and
-	//   leave crio config drop-in and runtimeclass unchanged
-	// - what are possible race conditions?
-	// - how to clean up if something fails in the middle of the procedure?
+	r.kataLogger.Info("after processKataConfigDeleteRequest")
 
 	return r.processKataConfigInstallRequest()
 
-	//return reconcile.Result{}, nil
 }
 
 func (r *ReconcileKataConfig) processKataConfigDeleteRequest() (reconcile.Result, error) {
@@ -701,7 +693,7 @@ func (r *ReconcileKataConfig) processKataConfigDeleteRequest() (reconcile.Result
 		}
 
 		if *r.isOpenShift {
-			r.kataLogger.Info("Making sure parent MCP is synced properly")
+			r.kataLogger.Info("r.isOpenshift: Making sure parent MCP is synced properly")
 			if _, ok := r.kataConfig.Spec.KataConfigPoolSelector.MatchLabels["node-role.kubernetes.io/worker"]; ok {
 				mc, err := r.newMCForCR()
 				var isMcDeleted bool
@@ -721,7 +713,7 @@ func (r *ReconcileKataConfig) processKataConfigDeleteRequest() (reconcile.Result
 							"mc", mc.Name, "error", err)
 					}
 					// Sleep for MCP to reflect the changes
-					r.kataLogger.Info("Pausing for a minute to make sure worker mcp has started syncing up")
+					r.kataLogger.Info("r.isOpenShift: Pausing for a minute to make sure worker mcp has started syncing up")
 					time.Sleep(60 * time.Second)
 				}
 
