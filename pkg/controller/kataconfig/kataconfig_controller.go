@@ -318,8 +318,8 @@ Description=Hacky service to enable kata-osbuilder-generate.service
 ConditionPathExists=/usr/lib/systemd/system/kata-osbuilder-generate.service
 [Service]
 Type=oneshot
-ExecStart=/usr/libexec/kata-containers/osbuilder/fedora-kata-osbuilder.sh
-ExecRestart=/usr/libexec/kata-containers/osbuilder/fedora-kata-osbuilder.sh
+ExecStart=/usr/libexec/kata-containers/osbuilder/kata-osbuilder.sh
+ExecRestart=/usr/libexec/kata-containers/osbuilder/kata-osbuilder.sh
 [Install]
 WantedBy=multi-user.target
 `
@@ -372,7 +372,7 @@ WantedBy=multi-user.target
 	file.Filesystem = "root"
 	m := 420
 	file.Mode = &m
-	file.Path = "/etc/crio/crio.conf.d/kata-50.conf"
+	file.Path = "/etc/crio/crio.conf.d/50-kata.conf"
 
 	mc.Spec.Config.Storage.Files = []ignTypes.File{file}
 
