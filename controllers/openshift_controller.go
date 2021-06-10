@@ -28,6 +28,7 @@ import (
 	"github.com/go-logr/logr"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	kataconfigurationv1 "github.com/openshift/sandboxed-containers-operator/api/v1"
+	ofwapiv1 "github.com/operator-framework/api/pkg/operators/v1"
 	corev1 "k8s.io/api/core/v1"
 	nodeapi "k8s.io/api/node/v1beta1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -500,6 +501,14 @@ func (r *KataConfigOpenShiftReconciler) processKataConfigInstallRequest() (ctrl.
 	}
 
 	r.kataConfig.Status.TotalNodesCount = int(foundMcp.Status.MachineCount)
+	r.kataConfig.Status.Conditions[0] = ofwapiv1.Condition{
+		Type:               "Upgradeable",
+		Status:             "false",
+		Reason:             "InstallationOngoing",
+		Message:            "An installation of the kata containers runtime is in progress",
+		LastUpdateTime:     &metav1.Time{},
+		LastTransitionTime: &metav1.Time{},
+	}
 
 	if mcfgv1.IsMachineConfigPoolConditionTrue(foundMcp.Status.Conditions, mcfgv1.MachineConfigPoolUpdating) &&
 		r.kataConfig.Status.InstallationStatus.IsInProgress == "false" &&
@@ -514,6 +523,15 @@ func (r *KataConfigOpenShiftReconciler) processKataConfigInstallRequest() (ctrl.
 		foundMcp.Status.UpdatedMachineCount == foundMcp.Status.MachineCount {
 		r.Log.Info("set runtime class")
 		r.kataConfig.Status.InstallationStatus.IsInProgress = "false"
+		r.kataConfig.Status.TotalNodesCount = int(foundMcp.Status.MachineCount)
+		r.kataConfig.Status.Conditions = append(r.kataConfig.Status.Conditions, ofwapiv1.Condition{
+			Type:               "Upgradeable",
+			Status:             "True",
+			Reason:             "InstallationOngoing",
+			Message:            "No installation going on",
+			LastUpdateTime:     &metav1.Time{},
+			LastTransitionTime: &metav1.Time{},
+		})
 		return r.setRuntimeClass()
 	} else {
 		r.Log.Info("Waiting for MachineConfigPool to be fully updated")
